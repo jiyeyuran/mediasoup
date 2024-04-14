@@ -1,11 +1,13 @@
-package mediasoup
+package rtc
+
+import "time"
 
 type bufferItem struct {
 	count uint64 // Count of items.
 	time  uint64 // Time when the item was added (calculated by the time source).
 }
 
-type rateCalculator struct {
+type RateCalculator struct {
 	windowSizeMs        uint64       // Window Size (in milliseconds).
 	scale               float64      // Scale in which the rate is represented.
 	windowItems         int          // Window Size (number of items).
@@ -22,17 +24,17 @@ type rateCalculator struct {
 }
 
 type rtpDataCounter struct {
-	rate    rateCalculator // rateCalculator instance to use.
+	rate    RateCalculator // RateCalculator instance to use.
 	packets uint64         // Count of packets.
 }
 
-func newRateCalculator(windowSizeMs uint64, scale float64, windowItems int) *rateCalculator {
+func NewRateCalculator(windowSizeMs uint64, scale float64, windowItems int) *RateCalculator {
 	itemSizeMs := windowSizeMs / uint64(windowItems)
 	if itemSizeMs < 1 {
 		itemSizeMs = 1
 	}
 
-	return &rateCalculator{
+	return &RateCalculator{
 		windowSizeMs:    windowSizeMs,
 		scale:           scale,
 		windowItems:     windowItems,
@@ -43,15 +45,15 @@ func newRateCalculator(windowSizeMs uint64, scale float64, windowItems int) *rat
 	}
 }
 
-func newRtpDataCounter(windowSizeMs uint64) *rtpDataCounter {
+func NewRtpDataCounter(windowSizeMs uint64) *rtpDataCounter {
 	// Initialize rtpDataCounter with input arguments, and initialise rate to be
-	// an instance of newRateCalculator with defined windowSizeMs.
+	// an instance of NewRateCalculator with defined windowSizeMs.
 	return &rtpDataCounter{
-		rate: *newRateCalculator(windowSizeMs, 8000, 100),
+		rate: *NewRateCalculator(windowSizeMs, 8000, 100),
 	}
 }
 
-func (r *rateCalculator) Update(size, nowMs uint64) {
+func (r *RateCalculator) Update(size, nowMs uint64) {
 	// Ignore too old data. Should never happen.
 	if nowMs < r.oldestItemStartTime {
 		return
@@ -101,7 +103,7 @@ func (r *rateCalculator) Update(size, nowMs uint64) {
 	r.lastTime = 0
 }
 
-func (r *rateCalculator) GetRate(nowMs uint64) uint32 {
+func (r *RateCalculator) GetRate(nowMs uint64) uint32 {
 	if nowMs == r.lastTime {
 		return r.lastRate
 	}
@@ -116,7 +118,7 @@ func (r *rateCalculator) GetRate(nowMs uint64) uint32 {
 	return r.lastRate
 }
 
-func (r *rateCalculator) removeOldData(nowMs uint64) {
+func (r *RateCalculator) removeOldData(nowMs uint64) {
 	// No item set.
 	if r.newestItemIndex < 0 || r.oldestItemIndex < 0 {
 		return
@@ -149,7 +151,7 @@ func (r *rateCalculator) removeOldData(nowMs uint64) {
 	}
 }
 
-func (r *rateCalculator) reset() {
+func (r *RateCalculator) reset() {
 	clear(r.buffer)
 	r.newestItemIndex = -1
 	r.oldestItemIndex = -1
@@ -157,7 +159,7 @@ func (r *rateCalculator) reset() {
 }
 
 func (r *rtpDataCounter) Update(packet *rtpPacket) {
-	nowMs := getTimeMs()
+	nowMs := uint64(time.Now().UnixMilli())
 
 	r.packets++
 	r.rate.Update(packet.Size, nowMs)

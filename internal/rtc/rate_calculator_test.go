@@ -1,40 +1,30 @@
-package mediasoup
+package rtc
 
 import (
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 )
 
-type data struct {
-	offset uint32
-	size   uint64
-	rate   uint32
-}
-
-func validate(t *testing.T, rate *rateCalculator, timeBase uint64, input []data) {
-	for _, item := range input {
-		rate.Update(item.size, timeBase+uint64(item.offset))
-		rateValue := rate.GetRate(timeBase + uint64(item.offset))
-
-		if rateValue != item.rate {
-			t.Errorf("Rate does not match: got %v, want %v", rateValue, item.rate)
-		}
-	}
-}
-
 func TestRateCalculator(t *testing.T) {
-	nowMs := getTimeMs()
+	nowMs := uint64(time.Now().UnixMilli())
+
+	type data struct {
+		offset uint32
+		size   uint64
+		rate   uint32
+	}
 
 	testCases := []struct {
 		name  string
-		rate  *rateCalculator
+		rate  *RateCalculator
 		input []data
-		after func(t *testing.T, r *rateCalculator)
+		after func(t *testing.T, r *RateCalculator)
 	}{
 		{
 			"receive single item per 1000 ms",
-			newRateCalculator(1000, 8000, 100),
+			NewRateCalculator(1000, 8000, 100),
 			[]data{
 				{0, 5, 40},
 			},
@@ -42,7 +32,7 @@ func TestRateCalculator(t *testing.T) {
 		},
 		{
 			"receive multiple items per 1000 ms",
-			newRateCalculator(1000, 8000, 100),
+			NewRateCalculator(1000, 8000, 100),
 			[]data{
 				{0, 5, 40},
 				{100, 2, 56},
@@ -53,7 +43,7 @@ func TestRateCalculator(t *testing.T) {
 		},
 		{
 			"receive item every 1000 ms",
-			newRateCalculator(1000, 8000, 100),
+			NewRateCalculator(1000, 8000, 100),
 			[]data{
 				{0, 5, 40},
 				{1000, 5, 40},
@@ -63,7 +53,7 @@ func TestRateCalculator(t *testing.T) {
 		},
 		{
 			"slide",
-			newRateCalculator(1000, 8000, 1000),
+			NewRateCalculator(1000, 8000, 1000),
 			[]data{
 				{0, 5, 40},
 				{999, 2, 56},
@@ -71,13 +61,13 @@ func TestRateCalculator(t *testing.T) {
 				{1001, 1, 32},
 				{2000, 1, 24},
 			},
-			func(t *testing.T, r *rateCalculator) {
+			func(t *testing.T, r *RateCalculator) {
 				assert.Zero(t, r.GetRate(nowMs+3001))
 			},
 		},
 		{
 			"slide with 100 items",
-			newRateCalculator(1000, 8000, 100),
+			NewRateCalculator(1000, 8000, 100),
 			[]data{
 				{0, 5, 40},
 				{999, 2, 56},
@@ -87,13 +77,13 @@ func TestRateCalculator(t *testing.T) {
 				// removing also the next two samples.
 				// The end estimation will include only the last sample.
 			},
-			func(t *testing.T, r *rateCalculator) {
+			func(t *testing.T, r *RateCalculator) {
 				assert.Zero(t, r.GetRate(nowMs+3001))
 			},
 		},
 		{
 			"wrap",
-			newRateCalculator(1000, 8000, 5),
+			NewRateCalculator(1000, 8000, 5),
 			[]data{
 				{1000, 1, 1 * 8},
 				{1200, 1, 1*8 + 1*8},
@@ -112,7 +102,14 @@ func TestRateCalculator(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			validate(t, tc.rate, nowMs, tc.input)
+			for _, item := range tc.input {
+				tc.rate.Update(item.size, nowMs+uint64(item.offset))
+				rateValue := tc.rate.GetRate(nowMs + uint64(item.offset))
+
+				if rateValue != item.rate {
+					t.Errorf("Rate does not match: got %v, want %v", rateValue, item.rate)
+				}
+			}
 			if tc.after != nil {
 				tc.after(t, tc.rate)
 			}
