@@ -102,7 +102,7 @@ func (s *SeqManager[T]) Input(input T) (output T, ok bool) {
 	} else { // There are dropped inputs, calculate 'base' for this input.
 		droppedCount := T(s.dropped.Len())
 
-		// Decrease dropped input which is higher than or equal 'input'.
+		// exclude dropped inputs which are higher than or equal 'input'.
 		s.dropped.Descend(func(value T) bool {
 			if s.isSeqHigherThan(value, input) || value == input {
 				droppedCount--
