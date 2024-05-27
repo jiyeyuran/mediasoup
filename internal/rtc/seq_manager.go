@@ -96,7 +96,7 @@ func (s *SeqManager[T]) Input(input T) (output T, ok bool) {
 	// No dropped inputs to consider after cleanup.
 	if s.dropped.Len() == 0 {
 		goto done
-	} else if _, found := s.dropped.Get(input); found { // This input was dropped.
+	} else if s.dropped.Has(input) { // This input was dropped.
 		// trying to send a dropped input
 		return 0, false
 	} else { // There are dropped inputs, calculate 'base' for this input.
