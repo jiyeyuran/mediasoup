@@ -158,7 +158,7 @@ func (r *RateCalculator) reset() {
 	r.totalCount = 0
 }
 
-func (r *rtpDataCounter) Update(packet *rtpPacket) {
+func (r *rtpDataCounter) Update(packet *RtpPacket) {
 	nowMs := uint64(time.Now().UnixMilli())
 
 	r.packets++
