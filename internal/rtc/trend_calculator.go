@@ -2,27 +2,38 @@ package rtc
 
 import (
 	"math"
-	"time"
 )
 
-type TrendCalculator struct {
-	value                 uint32
-	highestValue          uint32
-	highestValueUpdatedAt time.Time
-	decreaseFactor        float64
-}
+const DefaultDecreaseFactor float64 = 0.05
 
-func NewTrendCalculator(decreaseFactor float64) *TrendCalculator {
-	return &TrendCalculator{
-		decreaseFactor: decreaseFactor,
+func WithDecreaseFactor(decreaseFactor float64) func(*TrendCalculator) {
+	return func(tc *TrendCalculator) {
+		tc.decreaseFactor = decreaseFactor
 	}
 }
 
-func (tc *TrendCalculator) Update(value uint32, now time.Time) {
+type TrendCalculator struct {
+	value                   uint32
+	highestValue            uint32
+	highestValueUpdatedAtMs int64
+	decreaseFactor          float64
+}
+
+func NewTrendCalculator(options ...func(*TrendCalculator)) *TrendCalculator {
+	tc := &TrendCalculator{
+		decreaseFactor: DefaultDecreaseFactor,
+	}
+	for _, option := range options {
+		option(tc)
+	}
+	return tc
+}
+
+func (tc *TrendCalculator) Update(value uint32, nowMs int64) {
 	if tc.value == 0 {
 		tc.value = value
 		tc.highestValue = value
-		tc.highestValueUpdatedAt = now
+		tc.highestValueUpdatedAtMs = nowMs
 		return
 	}
 
@@ -30,11 +41,11 @@ func (tc *TrendCalculator) Update(value uint32, now time.Time) {
 	if value >= tc.value {
 		tc.value = value
 		tc.highestValue = value
-		tc.highestValueUpdatedAt = now
+		tc.highestValueUpdatedAtMs = nowMs
 	} else {
 		// Otherwise decrease current value.
-		elapsed := now.Sub(tc.highestValueUpdatedAt).Seconds()
-		subtraction := uint32(float64(tc.highestValue) * tc.decreaseFactor * elapsed)
+		elapsedMs := nowMs - tc.highestValueUpdatedAtMs
+		subtraction := uint32(float64(tc.highestValue) * tc.decreaseFactor * float64(elapsedMs) / 1000)
 		if tc.highestValue > subtraction {
 			tc.value = uint32(math.Max(float64(value), float64(tc.highestValue-subtraction)))
 		} else {
@@ -43,8 +54,12 @@ func (tc *TrendCalculator) Update(value uint32, now time.Time) {
 	}
 }
 
-func (tc *TrendCalculator) ForceUpdate(value uint32, now time.Time) {
+func (tc *TrendCalculator) ForceUpdate(value uint32, nowMs int64) {
 	tc.value = value
 	tc.highestValue = value
-	tc.highestValueUpdatedAt = now
+	tc.highestValueUpdatedAtMs = nowMs
+}
+
+func (tc TrendCalculator) GetValue() uint32 {
+	return tc.value
 }
