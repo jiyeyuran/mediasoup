@@ -40,12 +40,12 @@ func (st *SafeTimer) waitTimer() {
 func (st *SafeTimer) Stop() bool {
 	st.mu.Lock()
 	defer st.mu.Unlock()
-	if !st.timer.Stop() && st.active {
+	stopped := st.timer.Stop()
+	if !stopped && st.active {
 		<-st.timer.C // Ensure that the channel is drained.
-		return false
 	}
 	st.active = false
-	return true
+	return stopped
 }
 
 // Reset resets the timer to a new duration.
