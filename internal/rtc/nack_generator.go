@@ -39,7 +39,8 @@ const (
 
 type NackGenerator struct {
 	listener        NackListener
-	sendNackDelayMs uint
+	sendNackDelayMs uint64
+	timerInterval   time.Duration
 	timer           *SafeTimer
 	rtt             uint32 // Round trip time (ms).
 	started         bool
@@ -50,20 +51,24 @@ type NackGenerator struct {
 	logger          *slog.Logger
 }
 
-func NewNackGenerator(listener NackListener, sendNackDelayMs uint) *NackGenerator {
+func NewNackGenerator(listener NackListener, sendNackDelayMs uint64, options ...func(*NackGenerator)) *NackGenerator {
 	less := func(a, b uint16) bool {
 		return IsSeqLowerThan(a, b)
 	}
 	ng := &NackGenerator{
 		listener:        listener,
 		sendNackDelayMs: sendNackDelayMs,
+		timerInterval:   NackTimerInterval,
 		rtt:             DefaultRtt,
 		nackList:        skipmap.NewFunc[uint16, *NackInfo](less),
 		keyFrameList:    set.NewFunc(less),
 		recoveredList:   set.NewFunc(less),
 		logger:          slog.Default().With("typename", "NackGenerator"),
 	}
-	ng.timer = NewSafeTimer(NackTimerInterval, ng.onTimer)
+	for _, option := range options {
+		option(ng)
+	}
+	ng.timer = NewSafeTimer(ng.timerInterval, ng.onTimer)
 	return ng
 }
 
@@ -265,6 +270,10 @@ func (ng *NackGenerator) Close() {
 	ng.timer.Stop()
 }
 
+func (ng *NackGenerator) GetNackListForTest() *skipmap.FuncMap[uint16, *NackInfo] {
+	return ng.nackList
+}
+
 func (ng *NackGenerator) clearNackList() {
 	ng.nackList = skipmap.NewFunc[uint16, *NackInfo](func(a, b uint16) bool {
 		return IsSeqLowerThan(a, b)
@@ -282,7 +291,7 @@ func (ng *NackGenerator) onTimer() {
 
 func (ng *NackGenerator) mayRunTimer() {
 	if ng.nackList.Len() > 0 {
-		ng.timer.Reset(NackTimerInterval)
+		ng.timer.Reset(ng.timerInterval)
 	} else {
 		ng.timer.Stop()
 	}
