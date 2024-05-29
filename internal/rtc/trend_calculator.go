@@ -15,7 +15,7 @@ func WithDecreaseFactor(decreaseFactor float64) func(*TrendCalculator) {
 type TrendCalculator struct {
 	value                   uint32
 	highestValue            uint32
-	highestValueUpdatedAtMs int64
+	highestValueUpdatedAtMs uint64
 	decreaseFactor          float64
 }
 
@@ -29,7 +29,7 @@ func NewTrendCalculator(options ...func(*TrendCalculator)) *TrendCalculator {
 	return tc
 }
 
-func (tc *TrendCalculator) Update(value uint32, nowMs int64) {
+func (tc *TrendCalculator) Update(value uint32, nowMs uint64) {
 	if tc.value == 0 {
 		tc.value = value
 		tc.highestValue = value
@@ -54,7 +54,7 @@ func (tc *TrendCalculator) Update(value uint32, nowMs int64) {
 	}
 }
 
-func (tc *TrendCalculator) ForceUpdate(value uint32, nowMs int64) {
+func (tc *TrendCalculator) ForceUpdate(value uint32, nowMs uint64) {
 	tc.value = value
 	tc.highestValue = value
 	tc.highestValueUpdatedAtMs = nowMs

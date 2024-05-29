@@ -9,8 +9,8 @@ type PayloadDescriptorHandler interface {
 	Dump()
 	Process(context *codecs.EncodingContext, data []byte) (marker, ok bool)
 	Restore(data []byte)
-	GetSpatialLayer() int
-	GetTemporalLayer() int
+	GetSpatialLayer() uint8
+	GetTemporalLayer() uint8
 	IsKeyFrame() bool
 }
 

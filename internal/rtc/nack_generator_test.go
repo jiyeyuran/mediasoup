@@ -34,11 +34,11 @@ func (h *TestPayloadDescriptorHandler) Process(context *codecs.EncodingContext, 
 
 func (h *TestPayloadDescriptorHandler) Restore(data []byte) {}
 
-func (h *TestPayloadDescriptorHandler) GetSpatialLayer() int {
+func (h *TestPayloadDescriptorHandler) GetSpatialLayer() uint8 {
 	return 0
 }
 
-func (h *TestPayloadDescriptorHandler) GetTemporalLayer() int {
+func (h *TestPayloadDescriptorHandler) GetTemporalLayer() uint8 {
 	return 0
 }
 
