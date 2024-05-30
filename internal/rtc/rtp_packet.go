@@ -5,22 +5,13 @@ import (
 	"github.com/pion/rtp"
 )
 
-type PayloadDescriptorHandler interface {
-	Dump()
-	Process(context *codecs.EncodingContext, data []byte) (marker, ok bool)
-	Restore(data []byte)
-	GetSpatialLayer() uint8
-	GetTemporalLayer() uint8
-	IsKeyFrame() bool
-}
-
 type RtpPacket struct {
 	rtp.Packet
 	Size                     uint64
-	payloadDescriptorHandler PayloadDescriptorHandler
+	payloadDescriptorHandler codecs.PayloadDescriptorHandler
 }
 
-func (p *RtpPacket) SetPayloadDescriptorHandler(handler PayloadDescriptorHandler) {
+func (p *RtpPacket) SetPayloadDescriptorHandler(handler codecs.PayloadDescriptorHandler) {
 	p.payloadDescriptorHandler = handler
 }
 
