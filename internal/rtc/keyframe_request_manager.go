@@ -20,23 +20,23 @@ type KeyFrameRequestManagerListener interface {
 	OnKeyFrameNeeded(keyFrameRequestManager *KeyFrameRequestManager, ssrc uint32)
 }
 
-/* PendingKeyFrameInfo methods. */
-
 type PendingKeyFrameInfo struct {
 	listener       PendingKeyFrameInfoListener
 	ssrc           uint32
 	timer          *time.Timer
 	timerDuration  time.Duration
 	retryOnTimeout bool
+	doneCh         chan struct{}
 }
 
-func NewPendingKeyFrameInfo(listener PendingKeyFrameInfoListener, ssrc uint32) *PendingKeyFrameInfo {
+func NewPendingKeyFrameInfo(listener PendingKeyFrameInfoListener, ssrc uint32, timeout time.Duration) *PendingKeyFrameInfo {
 	pkfi := &PendingKeyFrameInfo{
 		listener:       listener,
 		ssrc:           ssrc,
-		timer:          time.NewTimer(KeyFrameRetransmissionWaitTime),
-		timerDuration:  KeyFrameRetransmissionWaitTime,
+		timer:          time.NewTimer(timeout),
+		timerDuration:  timeout,
 		retryOnTimeout: true,
+		doneCh:         make(chan struct{}),
 	}
 
 	// Start the timer with the specified wait time
@@ -46,8 +46,13 @@ func NewPendingKeyFrameInfo(listener PendingKeyFrameInfoListener, ssrc uint32) *
 }
 
 func (pkfi *PendingKeyFrameInfo) runTimer() {
-	<-pkfi.timer.C
-	pkfi.listener.OnKeyFrameRequestTimeout(pkfi)
+	defer pkfi.timer.Stop()
+
+	select {
+	case <-pkfi.timer.C:
+		pkfi.listener.OnKeyFrameRequestTimeout(pkfi)
+	case <-pkfi.doneCh:
+	}
 }
 
 func (pkfi *PendingKeyFrameInfo) GetSsrc() uint32 {
@@ -67,25 +72,23 @@ func (pkfi *PendingKeyFrameInfo) Restart() {
 }
 
 func (pkfi *PendingKeyFrameInfo) Stop() {
-	if !pkfi.timer.Stop() {
-		<-pkfi.timer.C
-	}
+	close(pkfi.doneCh)
 }
-
-/* KeyFrameRequestDelayer methods. */
 
 type KeyFrameRequestDelayer struct {
 	listener          KeyFrameRequestDelayerListener
 	ssrc              uint32
 	timer             *time.Timer
 	keyFrameRequested bool
+	doneCh            chan struct{}
 }
 
-func NewKeyFrameRequestDelayer(listener KeyFrameRequestDelayerListener, ssrc, delay uint32) *KeyFrameRequestDelayer {
+func NewKeyFrameRequestDelayer(listener KeyFrameRequestDelayerListener, ssrc uint32, delay time.Duration) *KeyFrameRequestDelayer {
 	kfrd := &KeyFrameRequestDelayer{
 		listener: listener,
 		ssrc:     ssrc,
-		timer:    time.NewTimer(KeyFrameRetransmissionWaitTime),
+		timer:    time.NewTimer(delay),
+		doneCh:   make(chan struct{}),
 	}
 	// Start the timer with the specified delay
 	go kfrd.runTimer()
@@ -93,8 +96,13 @@ func NewKeyFrameRequestDelayer(listener KeyFrameRequestDelayerListener, ssrc, de
 }
 
 func (pkfi *KeyFrameRequestDelayer) runTimer() {
-	<-pkfi.timer.C
-	pkfi.listener.OnKeyFrameDelayTimeout(pkfi)
+	defer pkfi.timer.Stop()
+
+	select {
+	case <-pkfi.timer.C:
+		pkfi.listener.OnKeyFrameDelayTimeout(pkfi)
+	case <-pkfi.doneCh:
+	}
 }
 
 func (kfrd *KeyFrameRequestDelayer) GetSsrc() uint32 {
@@ -110,27 +118,29 @@ func (kfrd *KeyFrameRequestDelayer) SetKeyFrameRequested(flag bool) {
 }
 
 func (kfrd *KeyFrameRequestDelayer) Stop() {
-	if !kfrd.timer.Stop() {
-		<-kfrd.timer.C
-	}
+	close(kfrd.doneCh)
 }
-
-/* KeyFrameRequestManager methods. */
 
 type KeyFrameRequestManager struct {
 	listener                      KeyFrameRequestManagerListener
-	keyFrameRequestDelay          uint32
+	keyFrameRequestDelay          time.Duration
+	keyFrameRetransmissionWait    time.Duration
 	mapSsrcPendingKeyFrameInfo    *skipmap.Uint32Map[*PendingKeyFrameInfo]
 	mapSsrcKeyFrameRequestDelayer *skipmap.Uint32Map[*KeyFrameRequestDelayer]
 }
 
-func NewKeyFrameRequestManager(listener KeyFrameRequestManagerListener, keyFrameRequestDelay uint32) *KeyFrameRequestManager {
-	return &KeyFrameRequestManager{
+func NewKeyFrameRequestManager(listener KeyFrameRequestManagerListener, keyFrameRequestDelay time.Duration, options ...func(*KeyFrameRequestManager)) *KeyFrameRequestManager {
+	km := &KeyFrameRequestManager{
 		listener:                      listener,
 		keyFrameRequestDelay:          keyFrameRequestDelay,
+		keyFrameRetransmissionWait:    KeyFrameRetransmissionWaitTime,
 		mapSsrcPendingKeyFrameInfo:    skipmap.NewUint32[*PendingKeyFrameInfo](),
 		mapSsrcKeyFrameRequestDelayer: skipmap.NewUint32[*KeyFrameRequestDelayer](),
 	}
+	for _, option := range options {
+		option(km)
+	}
+	return km
 }
 
 func (kfrm *KeyFrameRequestManager) KeyFrameNeeded(ssrc uint32) {
@@ -154,16 +164,15 @@ func (kfrm *KeyFrameRequestManager) KeyFrameNeeded(ssrc uint32) {
 	}
 
 	// Create a new pending key frame info and notify listener
-	kfrm.mapSsrcPendingKeyFrameInfo.Store(ssrc, NewPendingKeyFrameInfo(kfrm, ssrc))
+	kfrm.mapSsrcPendingKeyFrameInfo.Store(ssrc, NewPendingKeyFrameInfo(kfrm, ssrc, kfrm.keyFrameRetransmissionWait))
 	kfrm.listener.OnKeyFrameNeeded(kfrm, ssrc)
 }
 
 func (kfrm *KeyFrameRequestManager) ForceKeyFrameNeeded(ssrc uint32) {
 	// Handle key frame request delay
 	if kfrm.keyFrameRequestDelay > 0 {
-		if kfrd, found := kfrm.mapSsrcKeyFrameRequestDelayer.Load(ssrc); found {
+		if kfrd, found := kfrm.mapSsrcKeyFrameRequestDelayer.LoadAndDelete(ssrc); found {
 			kfrd.Stop()
-			kfrm.mapSsrcKeyFrameRequestDelayer.Delete(ssrc)
 		}
 		// Create a new delayer
 		kfrm.mapSsrcKeyFrameRequestDelayer.Store(ssrc, NewKeyFrameRequestDelayer(kfrm, ssrc, kfrm.keyFrameRequestDelay))
@@ -175,7 +184,7 @@ func (kfrm *KeyFrameRequestManager) ForceKeyFrameNeeded(ssrc uint32) {
 		pkfi.Restart()
 	} else {
 		// Create a new pending key frame info
-		kfrm.mapSsrcPendingKeyFrameInfo.Store(ssrc, NewPendingKeyFrameInfo(kfrm, ssrc))
+		kfrm.mapSsrcPendingKeyFrameInfo.Store(ssrc, NewPendingKeyFrameInfo(kfrm, ssrc, kfrm.keyFrameRetransmissionWait))
 	}
 
 	// Notify listener about the key frame needed
