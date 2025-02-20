@@ -32,11 +32,7 @@ func (s *Set[T]) Clear() {
 	s.FuncSet = skipset.NewFunc(s.less)
 }
 
-func (s *Set[T]) First() (T, bool) {
-	var (
-		val T
-		ok  bool
-	)
+func (s Set[T]) First() (val T, ok bool) {
 	s.Range(func(value T) bool {
 		val = value
 		ok = true
@@ -45,11 +41,7 @@ func (s *Set[T]) First() (T, bool) {
 	return val, ok
 }
 
-func (s *Set[T]) Last() (T, bool) {
-	var (
-		val T
-		ok  bool
-	)
+func (s Set[T]) Last() (val T, ok bool) {
 	s.Range(func(value T) bool {
 		val = value
 		ok = true
